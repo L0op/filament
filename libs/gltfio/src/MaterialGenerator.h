@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef GLTFIO_MATERIALSCACHE_H
-#define GLTFIO_MATERIALSCACHE_H
+#ifndef GLTFIO_MATERIALGENERATOR_H
+#define GLTFIO_MATERIALGENERATOR_H
 
 #include <filament/Engine.h>
 #include <filament/Material.h>
@@ -34,30 +34,30 @@ enum class AlphaMode : uint8_t {
 };
 
 struct MaterialKey {
-    bool doubleSided = false;
-    bool unlit = false;
-    bool hasVertexColors = false;
-    bool hasBaseColorTexture = false;
-    bool hasMetallicRoughnessTexture = false;
-    bool hasNormalTexture = false;
-    bool hasOcclusionTexture = false;
-    bool hasEmissiveTexture = false;
-    AlphaMode alphaMode = AlphaMode::OPAQUE;
-    float alphaMaskThreshold = 0.5f;
-    uint8_t baseColorUV = 0;
-    uint8_t metallicRoughnessUV = 0;
-    uint8_t emissiveUV = 0;
-    uint8_t aoUV = 0;
-    uint8_t normalUV = 0;
+    bool doubleSided : 1;
+    bool unlit : 1;
+    bool hasVertexColors : 1;
+    bool hasBaseColorTexture : 1;
+    bool hasMetallicRoughnessTexture : 1;
+    bool hasNormalTexture : 1;
+    bool hasOcclusionTexture : 1;
+    bool hasEmissiveTexture : 1;
+    AlphaMode alphaMode;
+    uint8_t baseColorUV;
+    uint8_t metallicRoughnessUV;
+    uint8_t emissiveUV;
+    uint8_t aoUV;
+    uint8_t normalUV;
+    float alphaMaskThreshold;
 };
 
-// The MaterialsCache uses filamat to generate properly configured Filament materials that each make
-// the required number of texture lookups. This complexity could be avoided if we were to use an
-// ubershader approach, but this allows us to generate efficient and streamlined shaders that have
-// no branching.
-class MaterialsCache final {
+// The MaterialGenerator uses filamat to generate properly configured Filament materials that each
+// make the required number of texture lookups. This complexity could be avoided if we were to use
+// an ubershader approach, but this allows us to generate efficient and streamlined shaders that
+// have no branching.
+class MaterialGenerator final {
 public:
-    MaterialsCache(filament::Engine* engine);
+    MaterialGenerator(filament::Engine* engine);
 
     // The passed-in cache key might be mutated by the implementation due to resource constraints.
     // For example, Filament only allows two sets of UV coordinates but glTF allows five.
@@ -77,4 +77,4 @@ private:
 } // namespace details
 } // namespace gltfio
 
-#endif // GLTFIO_MATERIALSCACHE_H
+#endif // GLTFIO_MATERIALGENERATOR_H

@@ -51,7 +51,7 @@ namespace gltfio {
  * blob.clear();
  *
  * // For JSON-based glTF files, here you would load externally referenced asset data from the
- * // file system or web. See getBufferBindings and getImageBindings.
+ * // file system or web. See getBufferBindings and getTextureBindings.
  *
  * scene->addEntities(asset->getEntities(), asset->getEntitiesCount());
  *

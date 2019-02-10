@@ -47,12 +47,12 @@ const BufferBinding* FilamentAsset::getBufferBindings() const noexcept {
     return upcast(this)->getBufferBindings();
 }
 
-size_t FilamentAsset::getImageBindingCount() const noexcept {
-    return upcast(this)->getImageBindingCount();
+size_t FilamentAsset::getTextureBindingCount() const noexcept {
+    return upcast(this)->getTextureBindingCount();
 }
 
-const ImageBinding* FilamentAsset::getImageBindings() const noexcept {
-    return upcast(this)->getImageBindings();
+const TextureBinding* FilamentAsset::getTextureBindings() const noexcept {
+    return upcast(this)->getTextureBindings();
 }
 
 } // namespace gltfio

@@ -17,8 +17,8 @@ set(SRCS
         src/FFilamentAsset.h
         src/FilamentAsset.cpp
         src/GltfEnums.h
-        src/MaterialsCache.cpp
-        src/MaterialsCache.h
+        src/MaterialGenerator.cpp
+        src/MaterialGenerator.h
         src/upcast.h
 )
 

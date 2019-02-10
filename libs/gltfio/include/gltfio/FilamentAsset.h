@@ -43,7 +43,7 @@ struct BufferBinding {
 };
 
 /** Describes a specific binding from a Texture to a MaterialInstance. */
-struct ImageBinding {
+struct TextureBinding {
     const char* uri;
     const char* mimeType;
     filament::MaterialInstance* materialInstance;
@@ -60,8 +60,8 @@ struct ImageBinding {
  *
  * Holds a weak instance to filament::Engine to allow destruction of Filament objects.
  *
- * Clients must iterate over texture uri's and create Texture objects, unless the asset was
- * loaded from a GLB file.
+ * Clients must iterate over texture uri's and create Texture objects, unless the asset
+ * was loaded from a GLB file. TODO: support auto-loaded textures for GLB files.
  *
  * Similarly, clients must iterate over buffer uri's and call VertexBuffer::setBufferAt()
  * and filament::IndexBuffer::setBuffer().
@@ -86,8 +86,8 @@ public:
     const BufferBinding* getBufferBindings() const noexcept;
 
     /** Gets loading instructions for textures. */
-    size_t getImageBindingCount() const noexcept;
-    const ImageBinding* getImageBindings() const noexcept;
+    size_t getTextureBindingCount() const noexcept;
+    const TextureBinding* getTextureBindings() const noexcept;
 
     /** Reclaims memory for binding instructions and URI strings when they are no longer needed. */
     void freeBindings() noexcept;

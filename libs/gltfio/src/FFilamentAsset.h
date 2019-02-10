@@ -67,19 +67,19 @@ struct FFilamentAsset : public FilamentAsset {
         return mBufferBindings.data();
     }
     
-    size_t getImageBindingCount() const noexcept {
-        return mImageBindings.size();
+    size_t getTextureBindingCount() const noexcept {
+        return mTextureBindings.size();
     }
 
-    const ImageBinding* getImageBindings() const noexcept {
-        return mImageBindings.data();
+    const TextureBinding* getTextureBindings() const noexcept {
+        return mTextureBindings.data();
     }
 
     void freeBindings() noexcept {
         mBufferBindings.clear();
         mBufferBindings.shrink_to_fit();
-        mImageBindings.clear();
-        mImageBindings.shrink_to_fit();
+        mTextureBindings.clear();
+        mTextureBindings.shrink_to_fit();
         cgltf_free((cgltf_data*) mSourceAsset);
         mSourceAsset = nullptr;
     }
@@ -88,7 +88,7 @@ struct FFilamentAsset : public FilamentAsset {
     std::vector<utils::Entity> mEntities;
     std::vector<filament::MaterialInstance*> mMaterialInstances;
     std::vector<BufferBinding> mBufferBindings;
-    std::vector<ImageBinding> mImageBindings;
+    std::vector<TextureBinding> mTextureBindings;
 
     // Retain the source asset until freeBindings() to allow usage of the original C-style
     // strings for URI's.

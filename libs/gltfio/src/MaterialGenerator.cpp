@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "MaterialsCache.h"
+#include "MaterialGenerator.h"
 
 #include <filamat/MaterialBuilder.h>
 
@@ -29,7 +29,7 @@ using namespace utils;
 namespace gltfio {
 namespace details {
 
-bool MaterialsCache::EqualFn::operator()(const MaterialKey& k1, const MaterialKey& k2) const {
+bool MaterialGenerator::EqualFn::operator()(const MaterialKey& k1, const MaterialKey& k2) const {
     return
         (k1.doubleSided == k2.doubleSided) &&
         (k1.unlit == k2.unlit) &&
@@ -40,25 +40,25 @@ bool MaterialsCache::EqualFn::operator()(const MaterialKey& k1, const MaterialKe
         (k1.hasOcclusionTexture == k2.hasOcclusionTexture) &&
         (k1.hasEmissiveTexture == k2.hasEmissiveTexture) &&
         (k1.alphaMode == k2.alphaMode) &&
-        (k1.alphaMaskThreshold == k2.alphaMaskThreshold) &&
         (k1.baseColorUV == k2.baseColorUV) &&
         (k1.metallicRoughnessUV == k2.metallicRoughnessUV) &&
         (k1.emissiveUV == k2.emissiveUV) &&
         (k1.aoUV == k2.aoUV) &&
-        (k1.normalUV == k2.normalUV);
+        (k1.normalUV == k2.normalUV) &&
+        (k1.alphaMaskThreshold == k2.alphaMaskThreshold);
 }
 
-MaterialsCache::MaterialsCache(Engine* engine) : mEngine(engine) {}
+MaterialGenerator::MaterialGenerator(Engine* engine) : mEngine(engine) {}
 
-size_t MaterialsCache::getMaterialsCount() const noexcept {
+size_t MaterialGenerator::getMaterialsCount() const noexcept {
     return mMaterials.size();
 }
 
-const Material* const* MaterialsCache::getMaterials() const noexcept {
+const Material* const* MaterialGenerator::getMaterials() const noexcept {
     return mMaterials.data();
 }
 
-void MaterialsCache::destroyMaterials() {
+void MaterialGenerator::destroyMaterials() {
     for (auto& iter : mCache) {
         mEngine->destroy(iter.second);
     }
@@ -224,11 +224,11 @@ static Material* createMaterial(Engine* engine, MaterialKey& config) {
     return Material::Builder().package(pkg.getData(), pkg.getSize()).build(*engine);
 }
 
-Material* MaterialsCache::getOrCreateMaterial(MaterialKey* config) {
+Material* MaterialGenerator::getOrCreateMaterial(MaterialKey* config) {
     auto iter = mCache.find(*config);
     if (iter == mCache.end()) {
         Material* mat = createMaterial(mEngine, *config);
-        mCache.emplace(std::make_pair(config, mat));
+        mCache.emplace(std::make_pair(*config, mat));
         mMaterials.push_back(mat);
         return mat;
     }
