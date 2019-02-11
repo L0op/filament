@@ -53,19 +53,20 @@ struct TextureBinding {
 
 /**
  * Owns a bundle of Filament objects that have been created by gltfio::AssetLoader.
+ * 
+ * For usage instructions, see the comment block for AssetLoader.
  *
- * Holds strong references to entities (renderables, lights and transforms) that have been loaded
- * from a glTF asset, as well as strong references to VertexBuffer, IndexBuffer, and
+ * This class holds strong references to entities (renderables, lights and transforms) that have
+ * been loaded from a glTF asset, as well as strong references to VertexBuffer, IndexBuffer, and
  * MaterialInstance.
  *
  * Holds a weak instance to filament::Engine to allow destruction of Filament objects.
  *
- * Clients must iterate over texture uri's and create Texture objects, unless the asset
- * was loaded from a GLB file. TODO: support auto-loaded textures for GLB files.
- *
- * Similarly, clients must iterate over buffer uri's and call VertexBuffer::setBufferAt()
- * and filament::IndexBuffer::setBuffer().
- *
+ * Clients must iterate over texture uri's and create Texture objects, unless the asset was loaded
+ * from a GLB file. Clients must also iterate over buffer uri's and call VertexBuffer::setBufferAt
+ * and IndexBuffer::setBuffer as needed. See BindingHelper to simplify this process.
+ * 
+ * TODO: support auto-load for GLB files.
  * TODO: This supports skinning, but not animation or morphing.
  * TODO: Only the default glTF scene is loaded, other glTF scenes are ignored.
  * TODO: Cameras, extras, and extensions are ignored.

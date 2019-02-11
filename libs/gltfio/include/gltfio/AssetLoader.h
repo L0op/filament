@@ -34,25 +34,24 @@ namespace gltfio {
  *
  * For JSON-based assets, the loader does not provide external buffer data or image data. Clients
  * must manually query the URI's in the returned FilamentAsset object, and load external data
- * manually.
+ * manually. The BindingHelper class can make this easier on some platforms.
  *
  * The loader also owns a cache of Material objects that may be re-used across multiple loads.
  * Example usage:
  * 
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
- * using namespace filament;
- * using namespace gltfio;
+ * auto engine = filament::Engine::create();
+ * auto loader = gltfio::AssetLoader::create(engine);
  *
- * Engine* engine = Engine::create();
- * AssetLoader* loader = AssetLoader::create(engine);
+ * // Parse the glTF content and create Filament entities.
+ * std::vector<uint8_t> content(...);
+ * gltfio::FilamentAsset* asset = loader->createAssetFromJson(content.data(), content.size());
+ * content.clear();
+ *
+ * // Upload vertex and texture data.
+ * gltfio::BindingHelper::load(asset, *engine);
  * 
- * std::vector<uint8_t> blob(...);
- * FilamentAsset* asset = loader->createAssetFromJson(blob.data(), blob.size());
- * blob.clear();
- *
- * // For JSON-based glTF files, here you would load externally referenced asset data from the
- * // file system or web. See getBufferBindings and getTextureBindings.
- *
+ * // Add all loaded entities to the scene.
  * scene->addEntities(asset->getEntities(), asset->getEntitiesCount());
  *
  * do {
@@ -61,7 +60,7 @@ namespace gltfio {
  *
  * loader->destroyAsset(asset);
  * loader->destroyMaterials();
- * AssetLoader::destroy(&loader);
+ * gltfio::AssetLoader::destroy(&loader);
  * 
  * engine->destroy(&scene);
  * Engine::destroy(&engine);
@@ -113,12 +112,6 @@ public:
 
     /** Asks the associated engine to destroy all cached materials. */
     void destroyMaterials();
-
-    // TODO: make a Utility class for base64 and file system loading after implementing GLB support.
-    static bool isBase64(const BufferBinding& bb);
-    static void loadBase64(const BufferBinding& bb);
-    static bool isFile(const BufferBinding& bb);
-    static void loadFile(const BufferBinding& bb);
 
 protected:
     AssetLoader() noexcept = default;

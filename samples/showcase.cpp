@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+// TODO: trim this list of includes
+
 #include <filament/Engine.h>
 #include <filament/IndirectLight.h>
 #include <filament/LightManager.h>
@@ -23,10 +25,10 @@
 #include <filament/View.h>
 
 #include <filameshio/MeshReader.h>
-#include <gltfio/AssetLoader.h>
 
-#include <image/KtxBundle.h>
-#include <image/KtxUtility.h>
+#include <gltfio/AssetLoader.h>
+#include <gltfio/FilamentAsset.h>
+#include <gltfio/BindingHelper.h>
 
 #include "app/Config.h"
 #include "app/FilamentApp.h"
@@ -45,7 +47,6 @@
 using namespace filament;
 using namespace filamesh;
 using namespace gltfio;
-using namespace image;
 using namespace math;
 using namespace utils;
 
@@ -183,20 +184,7 @@ int main(int argc, char** argv) {
                 exit(1);
             }
 
-            // TODO: this should be in a gltfio utility class
-            auto bb0 = app.asset->getBufferBindings();
-            auto bb1 = bb0 + app.asset->getBufferBindingCount();
-            for (auto bb = bb0; bb != bb1; ++bb) {
-                if (AssetLoader::isBase64(*bb)) {
-                    AssetLoader::loadBase64(*bb);
-                    continue;
-                }
-                if (AssetLoader::isFile(*bb)) {
-                    AssetLoader::loadFile(*bb);
-                    continue;
-                }
-                std::cerr << "Unable to obtain resource: " << bb->uri << std::endl;
-            }
+            BindingHelper::load(app.asset, *engine);
             
             scene->addEntities(app.asset->getEntities(), app.asset->getEntitiesCount());
         }

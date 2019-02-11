@@ -9,11 +9,13 @@ set(PUBLIC_HDR_DIR include)
 # ==================================================================================================
 set(PUBLIC_HDRS
         include/gltfio/AssetLoader.h
+        include/gltfio/BindingHelper.h
         include/gltfio/FilamentAsset.h
 )
 
 set(SRCS
         src/AssetLoader.cpp
+        src/BindingHelper.cpp
         src/FFilamentAsset.h
         src/FilamentAsset.cpp
         src/GltfEnums.h
