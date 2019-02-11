@@ -53,18 +53,9 @@ struct App {
     Config config;
     AssetLoader* loader;
     FilamentAsset* asset;
-
     bool shadowPlane = false;
-
-    Material* material;
-    MaterialInstance* materialInstance;
     MeshReader::Mesh mesh;
     mat4f transform;
-    Texture* albedo;
-    Texture* normal;
-    Texture* roughness;
-    Texture* metallic;
-    Texture* ao;
 };
 
 static const char* DEFAULT_IBL = "envs/venetian_crossroads";
@@ -172,7 +163,6 @@ int main(int argc, char** argv) {
     auto setup = [&app, filename](Engine* engine, View* view, Scene* scene) {
         app.loader = AssetLoader::create(engine);
 
-
         if (!filename.isEmpty()) {
             long contentSize = static_cast<long>(getFileSize(filename.c_str()));
             if (contentSize <= 0) {
@@ -193,67 +183,34 @@ int main(int argc, char** argv) {
                 exit(1);
             }
 
-            // TODO
+            // TODO: this should be in a gltfio utility class
+            auto bb0 = app.asset->getBufferBindings();
+            auto bb1 = bb0 + app.asset->getBufferBindingCount();
+            for (auto bb = bb0; bb != bb1; ++bb) {
+                if (AssetLoader::isBase64(*bb)) {
+                    AssetLoader::loadBase64(*bb);
+                    continue;
+                }
+                if (AssetLoader::isFile(*bb)) {
+                    AssetLoader::loadFile(*bb);
+                    continue;
+                }
+                std::cerr << "Unable to obtain resource: " << bb->uri << std::endl;
+            }
             
             scene->addEntities(app.asset->getEntities(), app.asset->getEntitiesCount());
         }
 
-        auto& tcm = engine->getTransformManager();
-        auto& rcm = engine->getRenderableManager();
-        auto& em = utils::EntityManager::get();
-
-        // Create textures. The KTX bundles are freed by KtxUtility.
-        auto albedo = new image::KtxBundle(TEXTURES_ALBEDO_S3TC_DATA, TEXTURES_ALBEDO_S3TC_SIZE);
-        auto ao = new image::KtxBundle(TEXTURES_AO_DATA, TEXTURES_AO_SIZE);
-        auto metallic = new image::KtxBundle(TEXTURES_METALLIC_DATA, TEXTURES_METALLIC_SIZE);
-        auto roughness = new image::KtxBundle(TEXTURES_ROUGHNESS_DATA, TEXTURES_ROUGHNESS_SIZE);
-        app.albedo = KtxUtility::createTexture(engine, albedo, true, false);
-        app.ao = KtxUtility::createTexture(engine, ao, false, false);
-        app.metallic = KtxUtility::createTexture(engine, metallic, false, false);
-        app.roughness = KtxUtility::createTexture(engine, roughness, false, false);
-        app.normal = loadNormalMap(engine, TEXTURES_NORMAL_DATA, TEXTURES_NORMAL_SIZE);
-        TextureSampler sampler(TextureSampler::MinFilter::LINEAR_MIPMAP_LINEAR,
-                TextureSampler::MagFilter::LINEAR);
-
-        // Instantiate material.
-        app.material = Material::Builder()
-                .package(RESOURCES_TEXTUREDLIT_DATA, RESOURCES_TEXTUREDLIT_SIZE).build(*engine);
-        app.materialInstance = app.material->createInstance();
-        app.materialInstance->setParameter("albedo", app.albedo, sampler);
-        app.materialInstance->setParameter("ao", app.ao, sampler);
-        app.materialInstance->setParameter("metallic", app.metallic, sampler);
-        app.materialInstance->setParameter("normal", app.normal, sampler);
-        app.materialInstance->setParameter("roughness", app.roughness, sampler);
-
         auto ibl = FilamentApp::get().getIBL()->getIndirectLight();
         ibl->setIntensity(100000);
         ibl->setRotation(mat3f::rotate(0.5f, float3{ 0, 1, 0 }));
-
-        // Add geometry into the scene.
-        app.mesh = filamesh::MeshReader::loadMeshFromBuffer(engine, RESOURCES_SUZANNE_DATA, nullptr,
-                nullptr, app.materialInstance);
-        auto ti = tcm.getInstance(app.mesh.renderable);
-        app.transform = mat4f{ mat3f(1), float3(0, 0, -4) } * tcm.getWorldTransform(ti);
-        rcm.setCastShadows(rcm.getInstance(app.mesh.renderable), false);
-        scene->addEntity(app.mesh.renderable);
-        tcm.setTransform(ti, app.transform);
     };
 
     auto cleanup = [&app](Engine* engine, View*, Scene*) {
         Fence::waitAndDestroy(engine->createFence());
-
         app.loader->destroyAsset(app.asset);
         app.loader->destroyMaterials();
         AssetLoader::destroy(&app.loader);
-
-        engine->destroy(app.materialInstance);
-        engine->destroy(app.mesh.renderable);
-        engine->destroy(app.material);
-        engine->destroy(app.albedo);
-        engine->destroy(app.normal);
-        engine->destroy(app.roughness);
-        engine->destroy(app.metallic);
-        engine->destroy(app.ao);
     };
 
     FilamentApp::get().run(app.config, setup, cleanup);

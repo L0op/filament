@@ -462,4 +462,32 @@ void AssetLoader::destroyMaterials() {
     upcast(this)->destroyMaterials();
 }
 
+bool AssetLoader::isBase64(const BufferBinding& bb) {
+   if (bb.uri && strncmp(bb.uri, "data:", 5) == 0) {
+        const char* comma = strchr(bb.uri, ',');
+        if (comma && comma - bb.uri >= 7 && strncmp(comma - 7, ";base64", 7) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void AssetLoader::loadBase64(const BufferBinding& bb) {
+   if (bb.uri && strncmp(bb.uri, "data:", 5) == 0) {
+        const char* comma = strchr(bb.uri, ',');
+        if (comma && comma - bb.uri >= 7 && strncmp(comma - 7, ";base64", 7) == 0) {
+            // TODO...
+        }
+    }
+}
+
+bool AssetLoader::isFile(const BufferBinding& bb) {
+    // TODO...
+    return false;
+}
+
+void AssetLoader::loadFile(const BufferBinding& bb) {
+    // TODO...
+}
+
 } // namespace gltfio

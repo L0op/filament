@@ -114,6 +114,12 @@ public:
     /** Asks the associated engine to destroy all cached materials. */
     void destroyMaterials();
 
+    // TODO: make a Utility class for base64 and file system loading after implementing GLB support.
+    static bool isBase64(const BufferBinding& bb);
+    static void loadBase64(const BufferBinding& bb);
+    static bool isFile(const BufferBinding& bb);
+    static void loadFile(const BufferBinding& bb);
+
 protected:
     AssetLoader() noexcept = default;
     ~AssetLoader() = default;
