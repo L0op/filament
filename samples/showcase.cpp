@@ -184,7 +184,8 @@ int main(int argc, char** argv) {
                 exit(1);
             }
 
-            BindingHelper::load(app.asset, *engine);
+            const char* basePath = "."; // TODO: change to asset folder
+            BindingHelper::load(app.asset, basePath, *engine);
             
             scene->addEntities(app.asset->getEntities(), app.asset->getEntitiesCount());
         }

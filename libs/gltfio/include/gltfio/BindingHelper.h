@@ -26,12 +26,13 @@ namespace filament {
 namespace gltfio {
 
 // For usage instructions, see the comment block for AssetLoader.
+// TODO: add callback functions to all loaders
 namespace BindingHelper {
-    bool load(FilamentAsset* asset, filament::Engine& engine);
+    bool load(FilamentAsset* asset, const char* basePath, filament::Engine& engine);
     bool isBase64(const BufferBinding& bb);
     bool isFile(const BufferBinding& bb);
     bool loadBase64(const BufferBinding& bb, filament::Engine& engine);
-    bool loadFile(const BufferBinding& bb, filament::Engine& engine);
+    bool loadFile(const BufferBinding& bb, const char* basePath, filament::Engine& engine);
 }
 
 } // namespace gltfio
