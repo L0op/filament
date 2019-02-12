@@ -20,6 +20,7 @@
 #include "GltfEnums.h"
 #include "MaterialGenerator.h"
 
+#include <filament/Box.h>
 #include <filament/Engine.h>
 #include <filament/IndexBuffer.h>
 #include <filament/LightManager.h>
@@ -28,6 +29,10 @@
 #include <filament/Scene.h>
 #include <filament/TransformManager.h>
 #include <filament/VertexBuffer.h>
+
+#include <math/mat4.h>
+#include <math/vec3.h>
+#include <math/vec4.h>
 
 #include <utils/EntityManager.h>
 #include <utils/Log.h>
@@ -54,8 +59,9 @@ namespace details {
 // small cache. The cache keys are glTF mesh definitions and the cache entries are lists of
 // primitives, where a "primitive" is a reference to a Filament VertexBuffer and IndexBuffer.
 struct Primitive {
-    VertexBuffer* vertices;
-    IndexBuffer* indices;
+    VertexBuffer* vertices = nullptr;
+    IndexBuffer* indices = nullptr;
+    Aabb aabb; // object-space bounding box
 };
 using Mesh = std::vector<Primitive>;
 using MeshCache = tsl::robin_map<const cgltf_mesh*, Mesh>;
@@ -102,7 +108,8 @@ struct FAssetLoader : public AssetLoader {
 
     void createAsset(const cgltf_data* srcAsset);
     void createEntity(const cgltf_node* srcNode, Entity parent);
-    void createPrimitive(const cgltf_primitive* inPrim, Primitive* outPrim);
+    void createRenderable(const cgltf_mesh* mesh, Entity entity);
+    bool createPrimitive(const cgltf_primitive* inPrim, Primitive* outPrim);
     MaterialInstance* createMaterialInstance(const cgltf_material* inputMat);
     void addTextureBinding(MaterialInstance* materialInstance, const char* parameterName,
         const cgltf_texture* srcTexture);
@@ -119,7 +126,8 @@ struct FAssetLoader : public AssetLoader {
 
     // The loader owns a few transient mappings used only for the current asset being loaded.
     FFilamentAsset* mResult;
-    tsl::robin_map<const cgltf_node*, utils::Entity> mNodeToEntity; // TODO: is this actually used? maybe for skinning...
+    tsl::robin_map<const cgltf_node*, utils::Entity> mNodeToEntity; // TODO: is this actually used?
+                                                                    // maybe for skinning...
     MatInstanceCache mMatInstanceCache;
     MeshCache mMeshCache;
     bool mError = false;
@@ -164,11 +172,15 @@ void FAssetLoader::createAsset(const cgltf_data* srcAsset) {
         return;
     }
 
+    // Create a single root node with an identity transform as a convenience to the client.
+    mResult->mRoot = mEntityManager.create();
+    mTransformManager.create(mResult->mRoot);
+
     // One scene may have multiple root nodes. Recurse down and create an entity for each node.
     cgltf_node** nodes = scene->nodes;
     for (cgltf_size i = 0, len = scene->nodes_count; i < len; ++i) {
         const cgltf_node* root = nodes[i];
-        createEntity(root, Entity());
+        createEntity(root, mResult->mRoot);
     }
 
     if (mError) {
@@ -186,6 +198,7 @@ void FAssetLoader::createAsset(const cgltf_data* srcAsset) {
 void FAssetLoader::createEntity(const cgltf_node* srcNode, Entity parent) {
     Entity entity = mEntityManager.create();
     mNodeToEntity[srcNode] = entity;
+    mResult->mEntities.push_back(entity);
 
     // Always create a transform component in order to preserve hierarchy.
     mat4f localTransform;
@@ -196,53 +209,7 @@ void FAssetLoader::createEntity(const cgltf_node* srcNode, Entity parent) {
     // If the node has a mesh, then create a renderable component.
     const cgltf_mesh* mesh = srcNode->mesh;
     if (mesh) {
-        cgltf_size nprims = mesh->primitives_count;
-        RenderableManager::Builder builder(nprims);
-
-        // If the mesh is already loaded, obtain the list of Filament VertexBuffer / IndexBuffer
-        // objects that were already generated, otherwise allocate a new list.
-        auto iter = mMeshCache.find(mesh);
-        if (iter == mMeshCache.end()) {
-            mMeshCache[mesh].resize(nprims);
-        }
-        Primitive* outputPrim = mMeshCache[mesh].data();
-        const cgltf_primitive* inputPrim = &srcNode->mesh->primitives[0];
-
-        // For each prim, create a Filament VertexBuffer / IndexBuffer and call geometry().
-        for (cgltf_size index = 0; index < nprims; ++index, ++outputPrim, ++inputPrim) {
-            RenderableManager::PrimitiveType primType;
-            if (!getPrimitiveType(inputPrim->type, &primType)) {
-                slog.e << "Unsupported primitive type." << io::endl;
-                mError = true;
-                continue;
-            }
-
-            // Ensure the existence of a Filament VertexBuffer and IndexBuffer.
-            if (!outputPrim->vertices) {
-                createPrimitive(inputPrim, outputPrim);
-            }
-
-            // We are not using the optional offset, minIndex, maxIndex, and count arguments when
-            // calling geometry() on the builder. It appears that the glTF spec does not have
-            // facilities for these parameters, which is not a huge loss since some of the buffer
-            // view and accessor features already have this functionality.
-            builder.geometry(index, primType, outputPrim->vertices, outputPrim->indices);
-
-            // Create a material instance for this primitive or fetch one from the cache.
-            MaterialInstance* mi = createMaterialInstance(inputPrim->material);
-            builder.material(index, mi);
-        }
-
-        // TODO: compute a bounding box and enable culling; this could be an optional feature like
-        // shadows. We could also check for min/max attributes in the positions accessor.
-        builder.culling(false);
-
-        builder.castShadows(mCastShadows);
-        builder.receiveShadows(mReceiveShadows);
-
-        // TODO: call builder.skinning()
-        // TODO: call builder.blendOrder()
-        // TODO: honor mesh->weights and weight_count
+        createRenderable(mesh, entity);
      }
 
     for (cgltf_size i = 0, len = srcNode->children_count; i < len; ++i) {
@@ -250,13 +217,85 @@ void FAssetLoader::createEntity(const cgltf_node* srcNode, Entity parent) {
     }
 }
 
-void FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* outPrim) {
+void FAssetLoader::createRenderable(const cgltf_mesh* mesh, Entity entity) {
+    // Compute the transform relative to the root.
+    auto thisTransform = mTransformManager.getInstance(entity);
+    mat4f worldTransform = mTransformManager.getWorldTransform(thisTransform);
+
+    cgltf_size nprims = mesh->primitives_count;
+    RenderableManager::Builder builder(nprims);
+
+    // If the mesh is already loaded, obtain the list of Filament VertexBuffer / IndexBuffer
+    // objects that were already generated, otherwise allocate a new list.
+    auto iter = mMeshCache.find(mesh);
+    if (iter == mMeshCache.end()) {
+        mMeshCache[mesh].resize(nprims);
+    }
+    Primitive* outputPrim = mMeshCache[mesh].data();
+    const cgltf_primitive* inputPrim = &mesh->primitives[0];
+
+    Aabb aabb;
+
+    // For each prim, create a Filament VertexBuffer, IndexBuffer, and MaterialInstance.
+    for (cgltf_size index = 0; index < nprims; ++index, ++outputPrim, ++inputPrim) {
+        RenderableManager::PrimitiveType primType;
+        if (!getPrimitiveType(inputPrim->type, &primType)) {
+            slog.e << "Unsupported primitive type." << io::endl;
+        }
+
+        // Create a Filament VertexBuffer and IndexBuffer for this prim if we haven't already.
+        if (!outputPrim->vertices && !createPrimitive(inputPrim, outputPrim)) {
+            mError = true;
+            continue;
+        }
+
+        // Expand the object-space bounding box.
+        aabb.min = min(outputPrim->aabb.min, aabb.min);
+        aabb.max = max(outputPrim->aabb.max, aabb.max);
+
+        // We are not using the optional offset, minIndex, maxIndex, and count arguments when
+        // calling geometry() on the builder. It appears that the glTF spec does not have
+        // facilities for these parameters, which is not a huge loss since some of the buffer
+        // view and accessor features already have this functionality.
+        builder.geometry(index, primType, outputPrim->vertices, outputPrim->indices);
+
+        // Create a material instance for this primitive or fetch one from the cache.
+        MaterialInstance* mi = createMaterialInstance(inputPrim->material);
+        builder.material(index, mi);
+    }
+
+    // Expand the world-space bounding box.
+    float3 minpt = (worldTransform * float4(aabb.min, 1.0)).xyz;
+    float3 maxpt = (worldTransform * float4(aabb.max, 1.0)).xyz;
+
+    slog.e << "\nentity min: " << aabb.min << io::endl;
+    slog.e << "entity max: " << aabb.max << io::endl;
+    slog.e << "world xform: " << worldTransform[0] << worldTransform[1]
+            << worldTransform[2] << worldTransform[3] << io::endl;
+    slog.e << "entity xformed min: " << minpt << io::endl;
+    slog.e << "entity xformed max: " << maxpt << io::endl;
+
+    mResult->mBoundingBox.min = min(mResult->mBoundingBox.min, minpt);
+    mResult->mBoundingBox.max = max(mResult->mBoundingBox.max, maxpt);
+
+    builder
+        .boundingBox({aabb.min, aabb.max})
+        .culling(false) // TODO: enable frustum culling
+        .castShadows(mCastShadows)
+        .receiveShadows(mReceiveShadows)
+        .build(*mEngine, entity);
+
+    // TODO: call builder.skinning()
+    // TODO: call builder.blendOrder()
+    // TODO: honor mesh->weights and weight_count
+}
+
+bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* outPrim) {
     const cgltf_accessor* indicesAccessor = inPrim->indices;
     if (!indicesAccessor) {
         // TODO: generate a trivial index buffer to be spec-compliant
         slog.e << "Non-indexed geometry is not yet supported." << io::endl;
-        mError = true;
-        return;
+        return false;
     }
 
     IndexBuffer::Builder ibb;
@@ -264,20 +303,37 @@ void FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
 
     IndexBuffer::IndexType indexType;
     if (!getIndexType(indicesAccessor->component_type, &indexType)) {
-        mError = true;
-        return;
+        utils::slog.e << "Unrecognized index type." << utils::io::endl;
+        return false;
     }
+    ibb.bufferType(indexType);
+
+    auto computeBindingSize = [](const cgltf_accessor* accessor){
+        // This is a bit of a cheat, cgltf_calc_size is private but its implementation file is
+        // available in this cpp file.
+        cgltf_size element_size = cgltf_calc_size(accessor->type, accessor->component_type);
+        return uint32_t(accessor->stride * (accessor->count - 1) + element_size);
+    };
+
+    auto computeBindingOffset = [](const cgltf_accessor* accessor){
+        return uint32_t(accessor->offset + accessor->buffer_view->offset);
+    };
 
     IndexBuffer* indices = ibb.build(*mEngine);
 
-    // We are ignoring some of the fields in the indices accessor, it is unclear from the glTF
-    // spec if this is acceptable.
+    // TODO: support sparse accessors.
+    if (indicesAccessor->is_sparse) {
+        slog.e << "Sparse accessors not yet supported." << io::endl;
+        return false;
+    }
 
+    const cgltf_buffer_view* bv = indicesAccessor->buffer_view;
     mResult->mBufferBindings.emplace_back(BufferBinding {
-        .uri = indicesAccessor->buffer_view->buffer->uri,
+        .uri = bv->buffer->uri,
+        .totalSize = (uint32_t) bv->buffer->size,
         .indexBuffer = indices,
-        .byteOffset = (uint32_t) (indicesAccessor->buffer_view->offset + indicesAccessor->offset),
-        .byteSize = (uint32_t) indicesAccessor->buffer_view->size,
+        .offset = computeBindingOffset(indicesAccessor),
+        .size = computeBindingSize(indicesAccessor), 
     });
 
     VertexBuffer::Builder vbb;
@@ -289,23 +345,41 @@ void FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
         // This will needlessly set the same vertex count multiple times, which should be fine.
         vbb.vertexCount(inputAccessor->count);
 
+        // The positions accessor is required to have min/max properties.
+        if (inputAttribute.type == cgltf_attribute_type_position) {
+            const float* minp = &inputAccessor->min[0];
+            const float* maxp = &inputAccessor->max[0];
+            outPrim->aabb.min = min(outPrim->aabb.min, float3(minp[0], minp[1], minp[2]));
+            outPrim->aabb.max = max(outPrim->aabb.max, float3(maxp[0], maxp[1], maxp[2]));
+        }
+
+        if (inputAttribute.type == cgltf_attribute_type_normal ||
+                inputAttribute.type == cgltf_attribute_type_tangent) {
+            // TODO: supply TANGENTS
+            slog.w << "Tangents not yet implemented." << io::endl;
+            continue;
+        }
+
         VertexAttribute attrType;
-        if (!getVertexAttribute(inputAttribute.type, &attrType)) {
-            mError = true;
-            return;
+        if (!getVertexAttrType(inputAttribute.type, &attrType)) {
+            utils::slog.e << "Unrecognized vertex attribute." << utils::io::endl;
+            return false;
         }
         VertexBuffer::AttributeType atype;
         if (!getElementType(inputAccessor->type, inputAccessor->component_type, &atype)) {
             slog.e << "Unsupported accessor type." << io::endl;
-            mError = true;
-            return;
+            return false;
         }
 
-        // TODO: support sparse accessors.
+        if (inputAccessor->is_sparse) {
+            slog.e << "Sparse accessors not yet supported." << io::endl;
+            return false;
+        }
 
         // The cgltf library provides a stride value for all accessors, even though they do not
         // exist in the glTF file. It is computed from the type and the stride of the buffer view.
-        vbb.attribute(attrType, attr, atype, inputAccessor->offset, inputAccessor->stride);
+        // As a convenience cgltf also replaces zero (default) stride with the actual stride.
+        vbb.attribute(attrType, attr, atype, 0, inputAccessor->stride);
 
         if (inputAccessor->normalized) {
             vbb.normalized(attrType);
@@ -316,17 +390,24 @@ void FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
     for (int attr = 0; attr < inPrim->attributes_count; attr++) {
         const cgltf_attribute& inputAttribute = inPrim->attributes[attr];
         const cgltf_accessor* inputAccessor = inputAttribute.data;
+        if (inputAttribute.type == cgltf_attribute_type_normal ||
+                inputAttribute.type == cgltf_attribute_type_tangent) {
+            continue;
+        }
+        const cgltf_buffer_view* bv = inputAccessor->buffer_view;
         mResult->mBufferBindings.emplace_back(BufferBinding {
-            .uri = inputAccessor->buffer_view->buffer->uri,
+            .uri = bv->buffer->uri,
+            .totalSize = (uint32_t) bv->buffer->size,
             .vertexBuffer = vertices,
             .bufferIndex = attr,
-            .byteOffset = (uint32_t) inputAccessor->buffer_view->offset,
-            .byteSize = (uint32_t) inputAccessor->buffer_view->size,
+            .offset = computeBindingOffset(inputAccessor),
+            .size = computeBindingSize(inputAccessor)
         });
     }
 
     outPrim->indices = indices;
     outPrim->vertices = vertices;
+    return true;
 }
 
 MaterialInstance* FAssetLoader::createMaterialInstance(const cgltf_material* inputMat) {

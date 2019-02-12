@@ -31,6 +31,10 @@ const Entity* FilamentAsset::getEntities() const noexcept {
     return upcast(this)->getEntities();
 }
 
+Entity FilamentAsset::getRoot() const noexcept {
+    return upcast(this)->getRoot();
+}
+
 size_t FilamentAsset::getMaterialInstancesCount() const noexcept {
     return upcast(this)->getMaterialInstancesCount();
 }
@@ -53,6 +57,10 @@ size_t FilamentAsset::getTextureBindingCount() const noexcept {
 
 const TextureBinding* FilamentAsset::getTextureBindings() const noexcept {
     return upcast(this)->getTextureBindings();
+}
+
+filament::Aabb FilamentAsset::getBoundingBox() const noexcept {
+    return upcast(this)->getBoundingBox();
 }
 
 } // namespace gltfio

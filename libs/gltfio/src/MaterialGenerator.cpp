@@ -162,12 +162,23 @@ static Material* createMaterial(Engine* engine, MaterialKey& config) {
         }
     }
 
+    int numTextures = 0;
+    if (config.hasBaseColorTexture) ++numTextures;
+    if (config.hasMetallicRoughnessTexture) ++numTextures;
+    if (config.hasNormalTexture) ++numTextures;
+    if (config.hasOcclusionTexture) ++numTextures;
+    if (config.hasEmissiveTexture) ++numTextures;
+
     std::string shader = shaderFromKey(config);
     MaterialBuilder builder = MaterialBuilder()
             .name("material")
             .material(shader.c_str())
-            .doubleSided(config.doubleSided)
-            .require(VertexAttribute::UV0);
+            .culling(MaterialBuilder::CullingMode::NONE) // TODO depend on doubleSided
+            .doubleSided(config.doubleSided);
+
+    if (numTextures > 0) {
+        builder.require(VertexAttribute::UV0);
+    }
 
     if (maxUVIndex > 0) {
         builder.require(VertexAttribute::UV1);

@@ -50,7 +50,11 @@ struct FFilamentAsset : public FilamentAsset {
     const utils::Entity* getEntities() const noexcept {
         return mEntities.data();
     }
-    
+
+    utils::Entity getRoot() const noexcept {
+        return mRoot;
+    }
+
     size_t getMaterialInstancesCount() const noexcept {
         return mMaterialInstances.size();
     }
@@ -75,6 +79,10 @@ struct FFilamentAsset : public FilamentAsset {
         return mTextureBindings.data();
     }
 
+    filament::Aabb getBoundingBox() const noexcept {
+        return mBoundingBox;
+    }
+
     void freeBindings() noexcept {
         mBufferBindings.clear();
         mBufferBindings.shrink_to_fit();
@@ -89,6 +97,8 @@ struct FFilamentAsset : public FilamentAsset {
     std::vector<filament::MaterialInstance*> mMaterialInstances;
     std::vector<BufferBinding> mBufferBindings;
     std::vector<TextureBinding> mTextureBindings;
+    filament::Aabb mBoundingBox;
+    utils::Entity mRoot;
 
     // Retain the source asset until freeBindings() to allow usage of the original C-style
     // strings for URI's.

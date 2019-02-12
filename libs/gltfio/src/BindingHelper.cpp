@@ -24,31 +24,103 @@
 
 #include <cgltf.h>
 
+#include <tsl/robin_map.h>
+
+#include <string>
+
+// TODO: to simplify the implementation of BindingHelper, we are using cgltf_load_buffer_base64 and
+// cgltf_load_buffer_file, which are normally private to the library. We should consider
+// substituting these functions with our own implementation since they are fairly simple.
+
 using namespace filament;
 using namespace utils;
 
 namespace gltfio {
-namespace BindingHelper {
 
-bool load(FilamentAsset* asset, const char* basePath, filament::Engine& engine) {
-    auto bb0 = asset->getBufferBindings();
-    auto bb1 = bb0 + asset->getBufferBindingCount();
-    for (auto bb = bb0; bb != bb1; ++bb) {
-        if (isBase64(*bb)) {
-            loadBase64(*bb, engine);
-            continue;
+class UrlCache {
+public:
+    void* getResource(const char* uri) {
+        auto iter = mBlobs.find(uri);
+        return (iter == mBlobs.end()) ? nullptr : iter->second;
+    }
+
+    void addResource(const char* uri, void* blob) {
+        mBlobs[uri] = blob;
+    }
+
+    void addPendingUpload() {
+        ++mPendingUploads;
+    }
+
+    UrlCache() {}
+
+    ~UrlCache() {
+        // TODO: free all mBlobs
+    }
+
+    // Destroy the URL cache only after the pending upload count is zero and the client has
+    // destroyed the BindingHelper object.
+    static void onLoadedResource(void* buffer, size_t size, void* user) {
+        auto cache = (UrlCache*) user;
+        if (--cache->mPendingUploads == 0 && cache->mOwnerDestroyed) {
+            delete cache;
         }
-        if (isFile(*bb)) {
-            loadFile(*bb, basePath, engine);
-            continue;
+    }
+
+    void onOwnerDestroyed() {
+        if (mPendingUploads == 0) {
+            delete this;
+        } else {
+            mOwnerDestroyed = true;
         }
-        slog.e << "Unable to obtain resource: " << bb->uri << io::endl;
-        return false;
+    }
+
+private:
+    bool mOwnerDestroyed = false;
+    int mPendingUploads = 0;
+    tsl::robin_map<std::string, void*> mBlobs; // TODO: can we simply use const char* for the key?
+};
+
+BindingHelper::BindingHelper(Engine* engine, const char* basePath) : mEngine(engine),
+        mBasePath(basePath), mCache(new UrlCache) {}
+
+BindingHelper::~BindingHelper() {
+    mCache->onOwnerDestroyed();
+}
+
+bool BindingHelper::loadResources(FilamentAsset* asset) {
+    const BufferBinding* bindings = asset->getBufferBindings();
+    for (size_t i = 0, n = asset->getBufferBindingCount(); i < n; ++i) {
+        auto bb = bindings[i];
+        void* data = mCache->getResource(bb.uri); // TODO: this should be uint8_t
+        if (data) {
+            // Do nothing.
+        } else if (isBase64(bb)) {
+            data = loadBase64(bb);
+            mCache->addResource(bb.uri, data);
+        } else if (isFile(bb)) {
+            data = loadFile(bb);
+            mCache->addResource(bb.uri, data);
+        } else {
+            slog.e << "Unable to obtain resource: " << bb.uri << io::endl;
+            return false;
+        }
+        mCache->addPendingUpload();
+        uint8_t* ucdata = bb.offset + (uint8_t*) data;
+        VertexBuffer::BufferDescriptor bd(ucdata, bb.size, UrlCache::onLoadedResource, mCache);
+        if (bb.vertexBuffer) {
+            bb.vertexBuffer->setBufferAt(*mEngine, bb.bufferIndex, std::move(bd));
+        } else if (bb.indexBuffer) {
+            bb.indexBuffer->setBuffer(*mEngine, std::move(bd));
+        } else {
+            slog.e << "Malformed binding: " << bb.uri << io::endl;
+            return false;
+        }
     }
     return true;
 }
 
-bool isBase64(const BufferBinding& bb) {
+bool BindingHelper::isBase64(const BufferBinding& bb) {
    if (bb.uri && strncmp(bb.uri, "data:", 5) == 0) {
         const char* comma = strchr(bb.uri, ',');
         if (comma && comma - bb.uri >= 7 && strncmp(comma - 7, ";base64", 7) == 0) {
@@ -58,59 +130,39 @@ bool isBase64(const BufferBinding& bb) {
     return false;
 }
 
-bool loadBase64(const BufferBinding& bb, Engine& engine) {
+void* BindingHelper::loadBase64(const BufferBinding& bb) {
     if (!bb.uri || strncmp(bb.uri, "data:", 5)) {
-        return false;
+        return nullptr;
     }
     const char* comma = strchr(bb.uri, ',');
     if (comma && comma - bb.uri >= 7 && strncmp(comma - 7, ";base64", 7) == 0) {
         cgltf_options options {};
         void* data = nullptr;
         cgltf_result result = cgltf_load_buffer_base64(
-                &options, bb.byteSize, comma + 1, &data);
+                &options, bb.totalSize, comma + 1, &data);
         if (result != cgltf_result_success) {
-            return false;
+            slog.e << "Unable to parse base64 URL." << io::endl;
+            return nullptr;
         }
-        auto callback = (VertexBuffer::BufferDescriptor::Callback) free;
-        VertexBuffer::BufferDescriptor bd(data, bb.byteSize, callback);
-        if (bb.vertexBuffer) {
-            bb.vertexBuffer->setBufferAt(engine, bb.bufferIndex, std::move(bd), bb.byteOffset,
-                    bb.byteSize);
-            return true;
-        }
-        if (bb.indexBuffer) {
-            bb.indexBuffer->setBuffer(engine, std::move(bd), bb.byteOffset,  bb.byteSize);
-            return true;
-        }
+        return data;
     }
-    return false;
+    return nullptr;
 }
 
-bool isFile(const BufferBinding& bb) {
+bool BindingHelper::isFile(const BufferBinding& bb) {
     return strstr(bb.uri, "://") == nullptr;
 }
 
-bool loadFile(const BufferBinding& bb, const char* basePath, Engine& engine) {
+void* BindingHelper::loadFile(const BufferBinding& bb) {
     cgltf_options options {};
     void* data = nullptr;
     cgltf_result result = cgltf_load_buffer_file(
-            &options, bb.byteSize, bb.uri, basePath, &data);
+            &options, bb.totalSize, bb.uri, mBasePath.c_str(), &data);
     if (result != cgltf_result_success) {
-        return false;
+        slog.e << "Unable to consume " << bb.uri << io::endl;
+        return nullptr;
     }
-    auto callback = (VertexBuffer::BufferDescriptor::Callback) free;
-    VertexBuffer::BufferDescriptor bd(data, bb.byteSize, callback);
-    if (bb.vertexBuffer) {
-        bb.vertexBuffer->setBufferAt(engine, bb.bufferIndex, std::move(bd), bb.byteOffset,
-                bb.byteSize);
-        return true;
-    }
-    if (bb.indexBuffer) {
-        bb.indexBuffer->setBuffer(engine, std::move(bd), bb.byteOffset, bb.byteSize);
-        return true;
-    }
-    return false;
+    return data;
 }
 
-} // namespace BindingHelper
 } // namespace gltfio

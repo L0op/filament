@@ -34,7 +34,6 @@
 #include "app/FilamentApp.h"
 #include "app/IBL.h"
 
-#include <stb_image.h>
 #include <getopt/getopt.h>
 
 #include <fstream>
@@ -55,8 +54,6 @@ struct App {
     AssetLoader* loader;
     FilamentAsset* asset;
     bool shadowPlane = false;
-    MeshReader::Mesh mesh;
-    mat4f transform;
 };
 
 static const char* DEFAULT_IBL = "envs/venetian_crossroads";
@@ -122,23 +119,6 @@ static int handleCommandLineArgments(int argc, char* argv[], App* app) {
     return optind;
 }
 
-static Texture* loadNormalMap(Engine* engine, const uint8_t* normals, size_t nbytes) {
-    int w, h, n;
-    unsigned char* data = stbi_load_from_memory(normals, nbytes, &w, &h, &n, 3);
-    Texture* normalMap = Texture::Builder()
-            .width(uint32_t(w))
-            .height(uint32_t(h))
-            .levels(0xff)
-            .format(driver::TextureFormat::RGB8)
-            .build(*engine);
-    Texture::PixelBufferDescriptor buffer(data, size_t(w * h * 3),
-            Texture::Format::RGB, Texture::Type::UBYTE,
-            (driver::BufferDescriptor::Callback) &stbi_image_free);
-    normalMap->setImage(*engine, 0, std::move(buffer));
-    normalMap->generateMipmaps(*engine);
-    return normalMap;
-}
-
 static std::ifstream::pos_type getFileSize(const char* filename) {
     std::ifstream in(filename, std::ifstream::ate | std::ifstream::binary);
     return in.tellg();
@@ -162,37 +142,55 @@ int main(int argc, char** argv) {
     }
 
     auto setup = [&app, filename](Engine* engine, View* view, Scene* scene) {
+        FilamentApp::get().getIBL()->getIndirectLight()->setIntensity(100000);
         app.loader = AssetLoader::create(engine);
-
-        if (!filename.isEmpty()) {
-            long contentSize = static_cast<long>(getFileSize(filename.c_str()));
-            if (contentSize <= 0) {
-                std::cerr << "Unable to open " << filename << std::endl;
-                exit(1);
-            }
-
-            std::ifstream in(filename.c_str(), std::ifstream::in);
-            std::vector<uint8_t> buffer(static_cast<unsigned long>(contentSize));
-            if (!in.read((char*) buffer.data(), contentSize)) {
-                std::cerr << "Unable to read " << filename << std::endl;
-                exit(1);
-            }
-
-            app.asset = app.loader->createAssetFromJson(buffer.data(), buffer.size());
-            if (!app.asset) {
-                std::cerr << "Unable to parse " << filename << std::endl;
-                exit(1);
-            }
-
-            const char* basePath = "."; // TODO: change to asset folder
-            BindingHelper::load(app.asset, basePath, *engine);
-            
-            scene->addEntities(app.asset->getEntities(), app.asset->getEntitiesCount());
+        if (filename.isEmpty()) {
+            return;
+        }
+        long contentSize = static_cast<long>(getFileSize(filename.c_str()));
+        if (contentSize <= 0) {
+            std::cerr << "Unable to open " << filename << std::endl;
+            exit(1);
         }
 
-        auto ibl = FilamentApp::get().getIBL()->getIndirectLight();
-        ibl->setIntensity(100000);
-        ibl->setRotation(mat3f::rotate(0.5f, float3{ 0, 1, 0 }));
+        // Consume the glTF file.
+        std::ifstream in(filename.c_str(), std::ifstream::in);
+        std::vector<uint8_t> buffer(static_cast<unsigned long>(contentSize));
+        if (!in.read((char*) buffer.data(), contentSize)) {
+            std::cerr << "Unable to read " << filename << std::endl;
+            exit(1);
+        }
+
+        // Parse the glTF file and create Filament entities.
+        app.asset = app.loader->createAssetFromJson(buffer.data(), buffer.size());
+        if (!app.asset) {
+            std::cerr << "Unable to parse " << filename << std::endl;
+            exit(1);
+        }
+        buffer.clear();
+        buffer.shrink_to_fit();
+
+        // Compute the scale required to fit the model's bounding box into [-1, +1]
+        std::cout << "\nAsset min: " << app.asset->getBoundingBox().min << std::endl;
+        std::cout << "Asset max: " << app.asset->getBoundingBox().max << std::endl << std::endl;
+        auto minpt = app.asset->getBoundingBox().min;
+        auto maxpt = app.asset->getBoundingBox().max;
+        float maxExtent = 0;
+        maxExtent = std::max(maxpt.x - minpt.x, maxpt.y - minpt.y);
+        maxExtent = std::max(maxExtent, maxpt.z - minpt.z);
+        float scaleFactor = 2.0f / maxExtent;
+        float3 center = (minpt + maxpt) / 2.0f;
+        center.z += 4.0f / scaleFactor;
+        auto& tcm = engine->getTransformManager();
+        auto root = tcm.getInstance(app.asset->getRoot());
+        tcm.setTransform(root, mat4f::scale(float3(scaleFactor)) * mat4f::translate(-center));
+
+        // Load external textures and buffers.
+        utils::Path assetFolder = filename.getParent();
+        gltfio::BindingHelper(engine, assetFolder.c_str()).loadResources(app.asset);
+        
+        // Add renderables and lights. This also adds transform-only entities that get ignored.
+        scene->addEntities(app.asset->getEntities(), app.asset->getEntitiesCount());
     };
 
     auto cleanup = [&app](Engine* engine, View*, Scene*) {

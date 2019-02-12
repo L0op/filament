@@ -22,8 +22,6 @@
 #include <filament/TextureSampler.h>
 #include <filament/VertexBuffer.h>
 
-#include <utils/Log.h>
-
 #include <cgltf.h>
 
 #define GL_NEAREST                        0x2600
@@ -45,7 +43,6 @@ inline filament::TextureSampler::WrapMode getWrapMode(cgltf_int wrap) {
         case GL_CLAMP_TO_EDGE:
             return filament::TextureSampler::WrapMode::CLAMP_TO_EDGE;
     }
-    utils::slog.e << "Unsupported WrapMode." << utils::io::endl;
     return filament::TextureSampler::WrapMode::REPEAT;
 }
 
@@ -64,7 +61,6 @@ inline filament::TextureSampler::MinFilter getMinFilter(cgltf_int minFilter) {
         case GL_LINEAR_MIPMAP_LINEAR:
             return filament::TextureSampler::MinFilter::LINEAR_MIPMAP_LINEAR;
     }
-    utils::slog.e << "Unsupported MinFilter." << utils::io::endl;
     return filament::TextureSampler::MinFilter::NEAREST;
 }
 
@@ -75,21 +71,14 @@ inline filament::TextureSampler::MagFilter getMagFilter(cgltf_int magFilter) {
         case GL_LINEAR:
             return filament::TextureSampler::MagFilter::LINEAR;
     }
-    utils::slog.e << "Unsupported MagFilter." << utils::io::endl;
     return filament::TextureSampler::MagFilter::NEAREST;
 }
 
-inline bool getVertexAttribute(cgltf_attribute_type atype, filament::VertexAttribute* attrType) {
+inline bool getVertexAttrType(cgltf_attribute_type atype, filament::VertexAttribute* attrType) {
     switch (atype) {
         case cgltf_attribute_type_position:
             *attrType = filament::VertexAttribute::POSITION;
             return true;
-        case cgltf_attribute_type_normal:
-            utils::slog.e << "Normals are not yet supported." << utils::io::endl;
-            return false;
-        case cgltf_attribute_type_tangent:
-            utils::slog.e << "Tangents are not yet supported." << utils::io::endl;
-            return false;
         case cgltf_attribute_type_texcoord:
             *attrType = filament::VertexAttribute::UV0;
             return true;
@@ -102,11 +91,11 @@ inline bool getVertexAttribute(cgltf_attribute_type atype, filament::VertexAttri
         case cgltf_attribute_type_weights:
             *attrType = filament::VertexAttribute::BONE_WEIGHTS;
             return true;
+        case cgltf_attribute_type_normal:
+        case cgltf_attribute_type_tangent:
         default:
-            break;
+            return false;
     }
-    utils::slog.e << "Unrecognized vertex attribute." << atype << utils::io::endl;
-    return false;
 }
 
 inline bool getIndexType(cgltf_component_type ctype, filament::IndexBuffer::IndexType* itype) {
@@ -120,7 +109,6 @@ inline bool getIndexType(cgltf_component_type ctype, filament::IndexBuffer::Inde
         default:
             break;
     }
-    utils::slog.e << "Unrecognized index type." << utils::io::endl;
     return false;
 }
 

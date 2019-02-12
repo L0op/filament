@@ -28,13 +28,13 @@ namespace filament {
 namespace gltfio {
 
 /**
- * The gltfio AssetLoader consumes glTF 2.0 content (either JSON or GLB) and produces bundles of
- * Filament renderables, material instances, vertex buffers, index buffers, textures, and light
- * sources.
+ * The gltfio AssetLoader consumes a blob of glTF 2.0 content (either JSON or GLB) and produces an
+ * "asset", which is a bundle of Filament renderables, material instances, vertex buffers, index
+ * buffers, and light sources.
  *
- * For JSON-based assets, the loader does not provide external buffer data or image data. Clients
- * must manually query the URI's in the returned FilamentAsset object, and load external data
- * manually. The BindingHelper class can make this easier on some platforms.
+ * For JSON-based content, the loader does not provide external buffer data or image data. Clients
+ * can obtain the URI list from the asset or use the provided the BindingHelper class (only
+ * available on some platforms).
  *
  * The loader also owns a cache of Material objects that may be re-used across multiple loads.
  * Example usage:
@@ -48,10 +48,10 @@ namespace gltfio {
  * gltfio::FilamentAsset* asset = loader->createAssetFromJson(content.data(), content.size());
  * content.clear();
  *
- * // Upload vertex and texture data.
- * gltfio::BindingHelper::load(asset, *engine);
+ * // Upload vertex buffers and texture data.
+ * gltfio::BindingHelper(engine, ".").loadResources(asset);
  * 
- * // Add all loaded entities to the scene.
+ * // Add renderables and light sources to the scene.
  * scene->addEntities(asset->getEntities(), asset->getEntitiesCount());
  *
  * do {
@@ -61,8 +61,6 @@ namespace gltfio {
  * loader->destroyAsset(asset);
  * loader->destroyMaterials();
  * gltfio::AssetLoader::destroy(&loader);
- * 
- * engine->destroy(&scene);
  * Engine::destroy(&engine);
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
@@ -70,7 +68,7 @@ class AssetLoader {
 public:
 
     /**
-     * Creates an asset loader (and its materials cache) for the given engine.
+     * Creates an asset loader and its materials cache for the given engine.
      * 
      * The engine is held weakly, used only for the creation of various Filament objects.
      */
@@ -110,7 +108,7 @@ public:
     size_t getMaterialsCount() const noexcept;
     const filament::Material* const* getMaterials() const noexcept;
 
-    /** Asks the associated engine to destroy all cached materials. */
+    /** Destroys all cached materials. */
     void destroyMaterials();
 
 protected:

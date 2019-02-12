@@ -19,21 +19,38 @@
 
 #include <gltfio/FilamentAsset.h>
 
+#include <utils/Path.h>
+
 namespace filament {
     class Engine;
 }
 
 namespace gltfio {
 
+class UrlCache;
+
+// The BindingHelper loads vertex buffers and textures for a given glTF asset.
+// It maintains a map of URL's to data blobs and can therefore be used for multiple assets.
 // For usage instructions, see the comment block for AssetLoader.
-// TODO: add callback functions to all loaders
-namespace BindingHelper {
-    bool load(FilamentAsset* asset, const char* basePath, filament::Engine& engine);
+//
+// THREAD SAFETY
+// -------------
+// This must be destroyed on the same thread that calls Renderer::render() because it listens to
+// BufferDescriptor callbacks in order to determine when to free CPU-side data blobs.
+class BindingHelper {
+public:
+    BindingHelper(filament::Engine* engine, const char* basePath);
+    ~BindingHelper();
+    bool loadResources(FilamentAsset* asset);
+private:
     bool isBase64(const BufferBinding& bb);
     bool isFile(const BufferBinding& bb);
-    bool loadBase64(const BufferBinding& bb, filament::Engine& engine);
-    bool loadFile(const BufferBinding& bb, const char* basePath, filament::Engine& engine);
-}
+    void* loadBase64(const BufferBinding& bb);
+    void* loadFile(const BufferBinding& bb);
+    UrlCache* mCache;
+    filament::Engine* mEngine;
+    utils::Path mBasePath;
+};
 
 } // namespace gltfio
 

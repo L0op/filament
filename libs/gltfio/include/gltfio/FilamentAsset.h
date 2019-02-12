@@ -17,6 +17,7 @@
 #ifndef GLTFIO_FILAMENTASSET_H
 #define GLTFIO_FILAMENTASSET_H
 
+#include <filament/Box.h>
 #include <filament/TextureSampler.h>
 
 #include <utils/Entity.h>
@@ -35,11 +36,12 @@ namespace gltfio {
 /** Describes how to load a specific data chunk into a VertexBuffer or IndexBuffer. */
 struct BufferBinding {
     const char* uri;
+    uint32_t totalSize;
     filament::VertexBuffer* vertexBuffer;
     filament::IndexBuffer* indexBuffer;
     int bufferIndex;
-    uint32_t byteOffset;
-    uint32_t byteSize;
+    uint32_t offset;
+    uint32_t size;
 };
 
 /** Describes a specific binding from a Texture to a MaterialInstance. */
@@ -78,6 +80,9 @@ public:
     size_t getEntitiesCount() const noexcept;
     const utils::Entity* getEntities() const noexcept;
 
+    /** Gets the transform root, this has no renderable component, just an identity transform. */
+    utils::Entity getRoot() const noexcept;
+
     /** Gets all material instances.  These are already bound to renderables and textures. */
     size_t getMaterialInstancesCount() const noexcept;
     const filament::MaterialInstance* const* getMaterialInstances() const noexcept;
@@ -90,6 +95,9 @@ public:
     size_t getTextureBindingCount() const noexcept;
     const TextureBinding* getTextureBindings() const noexcept;
 
+    /** Gets the bounding box computed from the supplied min / max values in glTF accessors. */
+    filament::Aabb getBoundingBox() const noexcept;
+    
     /** Reclaims memory for binding instructions and URI strings when they are no longer needed. */
     void freeBindings() noexcept;
 
