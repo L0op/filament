@@ -26,6 +26,7 @@
 
 #include <filameshio/MeshReader.h>
 
+#include <gltfio/AnimationHelper.h>
 #include <gltfio/AssetLoader.h>
 #include <gltfio/FilamentAsset.h>
 #include <gltfio/BindingHelper.h>
@@ -53,6 +54,7 @@ struct App {
     Config config;
     AssetLoader* loader;
     FilamentAsset* asset;
+    AnimationHelper* animation;
     bool shadowPlane = false;
 };
 
@@ -188,9 +190,13 @@ int main(int argc, char** argv) {
         // Load external textures and buffers.
         utils::Path assetFolder = filename.getParent();
         gltfio::BindingHelper(engine, assetFolder.c_str()).loadResources(app.asset);
-        
+
+        // Load animation data.
+        app.animation = new AnimationHelper(app.asset);
+        app.asset->releaseSourceData();
+
         // Add renderables and lights. This also adds transform-only entities that get ignored.
-        scene->addEntities(app.asset->getEntities(), app.asset->getEntitiesCount());
+        scene->addEntities(app.asset->getEntities(), app.asset->getEntityCount());
     };
 
     auto cleanup = [&app](Engine* engine, View*, Scene*) {
@@ -200,7 +206,15 @@ int main(int argc, char** argv) {
         AssetLoader::destroy(&app.loader);
     };
 
-    FilamentApp::get().run(app.config, setup, cleanup);
+    auto animate = [&app](Engine* engine, View*, double now) {
+        if (app.animation->getAnimationCount() > 0) {
+            app.animation->applyAnimation(0, now);
+        }
+    };
+
+    FilamentApp& filamentApp = FilamentApp::get();
+    filamentApp.run(app.config, setup, cleanup);
+    filamentApp.animate(animate);
 
     return 0;
 }

@@ -38,6 +38,7 @@
 #include <utils/Log.h>
 
 #include <tsl/robin_map.h>
+#include <tsl/robin_set.h>
 
 #define CGLTF_IMPLEMENTATION
 #include <cgltf.h>
@@ -69,6 +70,20 @@ using MeshCache = tsl::robin_map<const cgltf_mesh*, Mesh>;
 // Filament materials are cached by the MaterialGenerator, but material instances are cached here
 // in the loader object. glTF material definitions are 1:1 with filament::MaterialInstance.
 using MatInstanceCache = tsl::robin_map<const cgltf_material*, MaterialInstance*>;
+
+// Filament automatically infers the size of driver-level vertex buffers from the attribute data
+// (stride, count, offset) and clients are expected to avoid uploading data blobs that exceed this
+// size. Since this information doesn't exist in the glTF we need to compute it manually. This is a
+// bit of a cheat, cgltf_calc_size is private but its implementation file is available in this cpp
+// file.
+static uint32_t computeBindingSize(const cgltf_accessor* accessor){
+    cgltf_size element_size = cgltf_calc_size(accessor->type, accessor->component_type);
+    return uint32_t(accessor->stride * (accessor->count - 1) + element_size);
+};
+
+static uint32_t computeBindingOffset(const cgltf_accessor* accessor) {
+    return uint32_t(accessor->offset + accessor->buffer_view->size);
+};
 
 struct FAssetLoader : public AssetLoader {
     FAssetLoader(Engine* engine) :
@@ -112,7 +127,8 @@ struct FAssetLoader : public AssetLoader {
     bool createPrimitive(const cgltf_primitive* inPrim, Primitive* outPrim);
     MaterialInstance* createMaterialInstance(const cgltf_material* inputMat);
     void addTextureBinding(MaterialInstance* materialInstance, const char* parameterName,
-        const cgltf_texture* srcTexture);
+            const cgltf_texture* srcTexture);
+    void createAnimationBuffer(const cgltf_animation* anims);
 
     bool mCastShadows = true;
     bool mReceiveShadows = true;
@@ -186,6 +202,14 @@ void FAssetLoader::createAsset(const cgltf_data* srcAsset) {
     if (mError) {
         delete mResult;
         mResult = nullptr;
+    }
+
+    // Find all animation buffers and create buffer bindings for them.
+    // Note that if the glTF combines animation data and vertex data into a single buffer,
+    // this will create a buffer that is needlessly large.
+    const cgltf_animation* anims = srcAsset->animations;
+    if (anims) {
+        createAnimationBuffer(anims);
     }
 
     // We're done with the import, so free up transient bookkeeping resources.
@@ -307,13 +331,6 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
         return false;
     }
     ibb.bufferType(indexType);
-
-    auto computeBindingSize = [](const cgltf_accessor* accessor){
-        // This is a bit of a cheat, cgltf_calc_size is private but its implementation file is
-        // available in this cpp file.
-        cgltf_size element_size = cgltf_calc_size(accessor->type, accessor->component_type);
-        return uint32_t(accessor->stride * (accessor->count - 1) + element_size);
-    };
 
     auto computeBindingOffset = [](const cgltf_accessor* accessor){
         return uint32_t(accessor->offset + accessor->buffer_view->offset);
@@ -499,6 +516,32 @@ void FAssetLoader::addTextureBinding(MaterialInstance* materialInstance, const c
         .materialParameter = parameterName,
         .sampler = sampler
     });
+}
+
+void FAssetLoader::createAnimationBuffer(const cgltf_animation* anims) {
+    const cgltf_data* srcAsset = mResult->mSourceAsset;
+    tsl::robin_set<const cgltf_buffer*> animbuffers;
+    for (cgltf_size i = 0, len = srcAsset->animations_count; i < len; ++i) {
+        cgltf_animation_sampler* samplers = anims[i].samplers;
+        for (cgltf_size j = 0, nsamps = anims[i].samplers_count; j < nsamps; ++j) {
+            animbuffers.insert(samplers[j].input->buffer_view->buffer);
+            animbuffers.insert(samplers[j].output->buffer_view->buffer);
+        }
+    }
+    uint32_t animsize = 0;
+    for (auto buffer : animbuffers) {
+        animsize += buffer->size;
+    }
+    mResult->mAnimationBuffer.resize(animsize);
+    uint8_t* dstbuffer = mResult->mAnimationBuffer.data();
+    for (auto srcbuffer : animbuffers) {
+        mResult->mBufferBindings.emplace_back(BufferBinding {
+            .uri = srcbuffer->uri,
+            .totalSize = uint32_t(srcbuffer->size),
+            .animationBuffer = dstbuffer
+        });
+        dstbuffer += srcbuffer->size;
+    }
 }
 
 AssetLoader* AssetLoader::create(Engine* engine) {

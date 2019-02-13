@@ -8,12 +8,14 @@ set(PUBLIC_HDR_DIR include)
 # Sources and headers
 # ==================================================================================================
 set(PUBLIC_HDRS
+        include/gltfio/AnimationHelper.h
         include/gltfio/AssetLoader.h
         include/gltfio/BindingHelper.h
         include/gltfio/FilamentAsset.h
 )
 
 set(SRCS
+        src/AnimationHelper.cpp
         src/AssetLoader.cpp
         src/BindingHelper.cpp
         src/FFilamentAsset.h

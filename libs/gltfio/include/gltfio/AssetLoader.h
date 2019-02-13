@@ -50,9 +50,10 @@ namespace gltfio {
  *
  * // Upload vertex buffers and texture data.
  * gltfio::BindingHelper(engine, ".").loadResources(asset);
+ * asset->releaseSourceData();
  * 
  * // Add renderables and light sources to the scene.
- * scene->addEntities(asset->getEntities(), asset->getEntitiesCount());
+ * scene->addEntities(asset->getEntities(), asset->getEntityCount());
  *
  * do {
  *      ...

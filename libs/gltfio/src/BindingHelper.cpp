@@ -112,6 +112,8 @@ bool BindingHelper::loadResources(FilamentAsset* asset) {
             bb.vertexBuffer->setBufferAt(*mEngine, bb.bufferIndex, std::move(bd));
         } else if (bb.indexBuffer) {
             bb.indexBuffer->setBuffer(*mEngine, std::move(bd));
+        } else if (bb.animationBuffer) {
+            memcpy(bb.animationBuffer, data, bb.totalSize);
         } else {
             slog.e << "Malformed binding: " << bb.uri << io::endl;
             return false;

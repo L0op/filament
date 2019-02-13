@@ -23,8 +23,8 @@ namespace gltfio {
 
 using namespace details;
 
-size_t FilamentAsset::getEntitiesCount() const noexcept {
-    return upcast(this)->getEntitiesCount();
+size_t FilamentAsset::getEntityCount() const noexcept {
+    return upcast(this)->getEntityCount();
 }
 
 const Entity* FilamentAsset::getEntities() const noexcept {
@@ -35,8 +35,8 @@ Entity FilamentAsset::getRoot() const noexcept {
     return upcast(this)->getRoot();
 }
 
-size_t FilamentAsset::getMaterialInstancesCount() const noexcept {
-    return upcast(this)->getMaterialInstancesCount();
+size_t FilamentAsset::getMaterialInstanceCount() const noexcept {
+    return upcast(this)->getMaterialInstanceCount();
 }
 
 const MaterialInstance* const* FilamentAsset::getMaterialInstances() const noexcept {
@@ -61,6 +61,10 @@ const TextureBinding* FilamentAsset::getTextureBindings() const noexcept {
 
 filament::Aabb FilamentAsset::getBoundingBox() const noexcept {
     return upcast(this)->getBoundingBox();
+}
+
+void FilamentAsset::releaseSourceData() noexcept {
+    return upcast(this)->releaseSourceData();
 }
 
 } // namespace gltfio

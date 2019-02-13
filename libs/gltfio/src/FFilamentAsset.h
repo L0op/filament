@@ -39,11 +39,11 @@ struct FFilamentAsset : public FilamentAsset {
     FFilamentAsset(filament::Engine* engine) : mEngine(engine) {}
 
     ~FFilamentAsset() {
-        freeBindings();
+        releaseSourceData();
         // TODO free all Filament objects
     }
 
-    size_t getEntitiesCount() const noexcept {
+    size_t getEntityCount() const noexcept {
         return mEntities.size();
     }
 
@@ -55,7 +55,7 @@ struct FFilamentAsset : public FilamentAsset {
         return mRoot;
     }
 
-    size_t getMaterialInstancesCount() const noexcept {
+    size_t getMaterialInstanceCount() const noexcept {
         return mMaterialInstances.size();
     }
 
@@ -83,11 +83,13 @@ struct FFilamentAsset : public FilamentAsset {
         return mBoundingBox;
     }
 
-    void freeBindings() noexcept {
+    void releaseSourceData() noexcept {
         mBufferBindings.clear();
         mBufferBindings.shrink_to_fit();
         mTextureBindings.clear();
         mTextureBindings.shrink_to_fit();
+        mAnimationBuffer.clear();
+        mAnimationBuffer.shrink_to_fit();
         cgltf_free((cgltf_data*) mSourceAsset);
         mSourceAsset = nullptr;
     }
@@ -97,11 +99,10 @@ struct FFilamentAsset : public FilamentAsset {
     std::vector<filament::MaterialInstance*> mMaterialInstances;
     std::vector<BufferBinding> mBufferBindings;
     std::vector<TextureBinding> mTextureBindings;
+    std::vector<uint8_t> mAnimationBuffer;
     filament::Aabb mBoundingBox;
     utils::Entity mRoot;
 
-    // Retain the source asset until freeBindings() to allow usage of the original C-style
-    // strings for URI's.
     const cgltf_data* mSourceAsset = nullptr;
 };
 
