@@ -43,7 +43,13 @@ struct FFilamentAsset : public FilamentAsset {
 
     ~FFilamentAsset() {
         releaseSourceData();
-        // TODO free all Filament objects
+        mEngine->destroy(mRoot);
+        for (auto entity : mEntities) {
+            mEngine->destroy(entity);
+        }
+        for (auto mi : mMaterialInstances) {
+            mEngine->destroy(mi);
+        }
     }
 
     size_t getEntityCount() const noexcept {

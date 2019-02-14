@@ -428,8 +428,19 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
 
 MaterialInstance* FAssetLoader::createMaterialInstance(const cgltf_material* inputMat) {
     auto iter = mMatInstanceCache.find(inputMat);
-    if (iter == mMatInstanceCache.end()) {
+    if (iter != mMatInstanceCache.end()) {
         return iter->second;
+    }
+
+    // The default glTF material is non-lit black.
+    if (inputMat == nullptr) {
+        MaterialKey matkey {
+            .unlit = true
+        };
+        Material* mat = mMaterials.getOrCreateMaterial(&matkey);
+        MaterialInstance* mi = mat->createInstance();
+        mResult->mMaterialInstances.push_back(mi);
+        return mMatInstanceCache[nullptr] = mi;
     }
 
     bool has_pbr = inputMat->has_pbr_metallic_roughness;

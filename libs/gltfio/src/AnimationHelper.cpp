@@ -202,6 +202,10 @@ AnimationHelper::AnimationHelper(FilamentAsset* publicAsset) {
     for (cgltf_size i = 0, len = srcAsset->animations_count; i < len; ++i) {
         const cgltf_animation& srcAnim = srcAnims[i];
         Animation& dstAnim = mImpl->animations[i];
+        dstAnim.duration = 0;
+        if (srcAnim.name) {
+            dstAnim.name = srcAnim.name;
+        }
 
         cgltf_animation_sampler* srcSamplers = srcAnim.samplers;
         dstAnim.samplers.resize(srcAnim.samplers_count);
@@ -209,6 +213,10 @@ AnimationHelper::AnimationHelper(FilamentAsset* publicAsset) {
             const cgltf_animation_sampler& srcSampler = srcSamplers[j];
             Sampler& dstSampler = dstAnim.samplers[j];
             createSampler(srcSampler, dstSampler, blobs);
+            if (dstSampler.times.size() > 1) {
+                float maxtime = *(--dstSampler.times.end());
+                dstAnim.duration = std::max(dstAnim.duration, maxtime);
+            }
         }
 
         cgltf_animation_channel* srcChannels = srcAnim.channels;
@@ -232,7 +240,38 @@ size_t AnimationHelper::getAnimationCount() const {
 }
 
 void AnimationHelper::applyAnimation(size_t animationIndex, float time) const {
-    // TODO
+    const Animation& anim = mImpl->animations[animationIndex];
+    time = fmod(time, anim.duration);
+    for (const auto& channel : anim.channels) {
+        const Sampler* sampler = channel.sourceData;
+        if (sampler->times.size() < 2) {
+            continue;
+        }
+        TransformManager::Instance node = channel.targetInstance;
+        auto interpolation = channel.transformType;
+
+        // Find the first keyframe greater than or equal to the given time.
+        // The cool thing about std::set is that it can do this efficiently.
+        const TimeValues& times = sampler->times;
+        auto iter = times.lower_bound(time);
+
+        // Find the two values that we will interpolate between.
+        float prevTime, nextTime;
+        uint32_t prevIndex, nextIndex; // EYEBALL
+        if (iter == times.end()) {
+            prevTime = *(--times.end());
+            nextTime = anim.duration + *times.begin();
+        } else if (iter == times.begin()) {
+            prevTime = nextTime = *iter;
+        } else {
+            nextTime = *iter;
+            prevTime = *(--iter);
+        }
+
+        // Compute the interpolatant value between 0 and 1.
+        float interval = nextTime - prevTime;
+        float t = interval == 0 ? 0.0f : ((time - prevTime) / interval);
+    }
 }
 
 float AnimationHelper::getAnimationDuration(size_t animationIndex) const {

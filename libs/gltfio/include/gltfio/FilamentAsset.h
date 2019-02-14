@@ -88,11 +88,14 @@ struct TextureBinding {
 class FilamentAsset {
 public:
 
-    /** Gets the list of renderables and light sources. */
+    /**
+     * Gets the list of entities, one for each glTF node. All of these have a Transform component.
+     * Some of the returned entities may also have a Renderable component.
+     */
     size_t getEntityCount() const noexcept;
     const utils::Entity* getEntities() const noexcept;
 
-    /** Gets the transform root, this has no renderable component, just an identity transform. */
+    /** Gets the transform root for the asset, which has no matching glTF node. */
     utils::Entity getRoot() const noexcept;
 
     /** Gets all material instances.  These are already bound to renderables and textures. */

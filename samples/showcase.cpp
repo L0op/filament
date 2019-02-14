@@ -213,8 +213,8 @@ int main(int argc, char** argv) {
     };
 
     FilamentApp& filamentApp = FilamentApp::get();
-    filamentApp.run(app.config, setup, cleanup);
     filamentApp.animate(animate);
+    filamentApp.run(app.config, setup, cleanup);
 
     return 0;
 }
