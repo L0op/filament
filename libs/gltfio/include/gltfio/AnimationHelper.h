@@ -24,8 +24,10 @@ namespace gltfio {
 struct AnimationImpl;
 
 /**
- * Upon construction, AnimationHelper copies animation data from a FilamentAsset.
- * It can then apply transformations to all entities targeted by glTF animation.
+ * AnimationHelper uses TransformManager to apply prescribed rotation, translation, and scale to the
+ * entities that have been targeted by the animation definitions for a particular FilamentAsset.
+ * For a usage example, see the comment block for AssetLoader.
+ * TODO: this supports skinning but not morphing.
  */
 class AnimationHelper {
 public:

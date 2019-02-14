@@ -30,14 +30,16 @@ namespace gltfio {
 class UrlCache;
 
 /**
- * BindingHelper loads vertex buffers and textures for a given glTF asset.
- * 
- * This class holds a map of URL's to data blobs and can therefore be used for multiple assets.
- * For usage instructions, see the comment block for AssetLoader.
+ * BindingHelper asynchronously uploads vertex buffers and textures to the GPU.
  *
- * THREAD SAFETY
- * -------------
- * This must be destroyed on the same thread that calls Renderer::render() because it listens to
+ * For a usage example, see the comment block for AssetLoader.
+ *
+ * This class holds a map of URL's to data blobs and can therefore be used for multiple assets.
+ * However, if desired, clients can immediately destroy the helper after calling loadResources.
+ * There is no need to wait for resources to finish uploading because this is done in the
+ * the background.
+ *
+ * The helper must be destroyed on the same thread that calls Renderer::render because it listens to
  * BufferDescriptor callbacks in order to determine when to free CPU-side data blobs.
  */
 class BindingHelper {

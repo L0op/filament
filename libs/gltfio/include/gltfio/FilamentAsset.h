@@ -23,17 +23,27 @@
 #include <utils/Entity.h>
 
 namespace filament {
-    class Camera;
     class Engine;
     class IndexBuffer;
     class MaterialInstance;
-    class Scene;
     class VertexBuffer;
 }
 
 namespace gltfio {
 
-/** Describes how to load a source blob into a VertexBuffer, IndexBuffer, or animation buffer. */
+/**
+ * BufferBinding is a read-only structure that tells clients how to load a source blob into a
+ * VertexBuffer, IndexBuffer, or "animation buffer".
+ * 
+ * Each binding instance corresponds to one of the following:
+ * 
+ *  (a) One call to VertexBuffer::setBufferAt().
+ *  (b) One call to IndexBuffer::setBuffer().
+ *  (c) One memcpy into an animation buffer.
+ * 
+ * Animation buffers are blobs of opaque CPU-side memory that hold keyframe values. These are
+ * consumed by the AnimationHelper class.
+ */
 struct BufferBinding {
     const char* uri;    // unique identifier for the source blob
     uint32_t totalSize; // size in bytes of the source blob at the given URI
@@ -49,7 +59,7 @@ struct BufferBinding {
     
 };
 
-/** Describes a specific binding from a Texture to a MaterialInstance. */
+/** Describes a binding from a Texture to a MaterialInstance. */
 struct TextureBinding {
     const char* uri;
     const char* mimeType;
@@ -59,19 +69,18 @@ struct TextureBinding {
 };
 
 /**
- * Owns a bundle of Filament objects that have been created by gltfio::AssetLoader.
- * 
+ * FilamentAsset owns a bundle of Filament objects that have been created by AssetLoader.
+ *
  * For usage instructions, see the comment block for AssetLoader.
  *
- * This class holds strong references to entities (renderables, lights and transforms) that have
- * been loaded from a glTF asset, as well as strong references to VertexBuffer, IndexBuffer, and
+ * This class holds strong references to entities (renderables and transforms) that have been loaded
+ * from a glTF asset, as well as strong references to VertexBuffer, IndexBuffer, and
  * MaterialInstance.
  *
  * Clients must iterate over texture uri's and create Texture objects, unless the asset was loaded
  * from a GLB file. Clients should also iterate over buffer uri's and call VertexBuffer::setBufferAt
  * and IndexBuffer::setBuffer as needed. See BindingHelper to simplify this process.
- * 
- * TODO: Support auto-load for GLB files.
+ *
  * TODO: This supports skinning but not morphing.
  * TODO: Only the default glTF scene is loaded, other glTF scenes are ignored.
  * TODO: Cameras, extras, and extensions are ignored.
@@ -102,7 +111,7 @@ public:
     filament::Aabb getBoundingBox() const noexcept;
     
     /**
-     * Reclaims memory for URI strings, binding lists, and raw animation data.
+     * Reclaims CPU-side memory for URI strings, binding lists, and raw animation data.
      *
      * If using BindingHelper, clients should call this only after calling loadResources.
      * If using AnimationHelper, clients should call this only after constructing the helper object.
