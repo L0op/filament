@@ -142,8 +142,6 @@ struct FAssetLoader : public AssetLoader {
 
     // The loader owns a few transient mappings used only for the current asset being loaded.
     FFilamentAsset* mResult;
-    tsl::robin_map<const cgltf_node*, utils::Entity> mNodeToEntity; // TODO: is this actually used?
-                                                                    // maybe for skinning...
     MatInstanceCache mMatInstanceCache;
     MeshCache mMeshCache;
     bool mError = false;
@@ -213,7 +211,6 @@ void FAssetLoader::createAsset(const cgltf_data* srcAsset) {
     }
 
     // We're done with the import, so free up transient bookkeeping resources.
-    mNodeToEntity.clear();
     mMatInstanceCache.clear();
     mMeshCache.clear();
     mError = false;
@@ -221,14 +218,16 @@ void FAssetLoader::createAsset(const cgltf_data* srcAsset) {
 
 void FAssetLoader::createEntity(const cgltf_node* srcNode, Entity parent) {
     Entity entity = mEntityManager.create();
-    mNodeToEntity[srcNode] = entity;
-    mResult->mEntities.push_back(entity);
 
-    // Always create a transform component in order to preserve hierarchy.
+    // Always create a transform component to reflect the original hierarchy.
     mat4f localTransform;
     cgltf_node_transform_local(srcNode, &localTransform[0][0]);
     auto parentTransform = mTransformManager.getInstance(parent);
     mTransformManager.create(entity, parentTransform, localTransform);
+
+    // Update the asset's entity list and private node mapping.
+    mResult->mEntities.push_back(entity);
+    mResult->mNodeMap[srcNode] = mTransformManager.getInstance(parent);
 
     // If the node has a mesh, then create a renderable component.
     const cgltf_mesh* mesh = srcNode->mesh;

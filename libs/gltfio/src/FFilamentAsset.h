@@ -22,12 +22,15 @@
 #include <filament/Engine.h>
 #include <filament/MaterialInstance.h>
 #include <filament/TextureSampler.h>
+#include <filament/TransformManager.h>
 
 #include <utils/Entity.h>
 
 #include <cgltf.h>
 
 #include "upcast.h"
+
+#include <tsl/robin_map.h>
 
 #include <set>
 #include <vector>
@@ -92,18 +95,23 @@ struct FFilamentAsset : public FilamentAsset {
         mAnimationBuffer.shrink_to_fit();
         cgltf_free((cgltf_data*) mSourceAsset);
         mSourceAsset = nullptr;
+        mNodeMap.clear();
     }
 
     filament::Engine* mEngine;
     std::vector<utils::Entity> mEntities;
     std::vector<filament::MaterialInstance*> mMaterialInstances;
-    std::vector<BufferBinding> mBufferBindings;
-    std::vector<TextureBinding> mTextureBindings;
-    std::vector<uint8_t> mAnimationBuffer;
     filament::Aabb mBoundingBox;
     utils::Entity mRoot;
 
+    /** @{
+     * Transient source data that can freed via releaseSourceData(). */
+    std::vector<BufferBinding> mBufferBindings;
+    std::vector<TextureBinding> mTextureBindings;
+    std::vector<uint8_t> mAnimationBuffer;
     const cgltf_data* mSourceAsset = nullptr;
+    tsl::robin_map<const cgltf_node*, filament::TransformManager::Instance> mNodeMap;
+    /** @} */
 };
 
 FILAMENT_UPCAST(FilamentAsset)

@@ -23,8 +23,9 @@
 
 #include <utils/Log.h>
 
-#include <math/quat.h>
 #include <math/mat4.h>
+#include <math/norm.h>
+#include <math/quat.h>
 #include <math/vec3.h>
 #include <math/vec4.h>
 
@@ -50,7 +51,7 @@ using UrlMap = tsl::robin_map<std::string, const uint8_t*>;
 struct Sampler {
     TimeValues times;
     SourceValues values;
-    int interpolation; // TODO
+    enum { LINEAR, STEP, CUBIC } interpolation;
 };
 
 struct Channel {
@@ -81,25 +82,36 @@ static int numComponents(cgltf_type type) {
 static void convert8(const cgltf_accessor* src, const uint8_t* srcBlob, SourceValues& dst) {
     srcBlob += src->buffer_view->offset + src->offset;
     dst.resize(src->count * numComponents(src->type));
-    // TODO    
+    auto srcValues = (const int8_t*) srcBlob;
+    for (size_t i = 0, n = dst.size(); i < n; ++i) {
+        dst[i] = unpackSnorm8(srcValues[i]);
+    }
 }
 
 static void convert8U(const cgltf_accessor* src, const uint8_t* srcBlob, SourceValues& dst) {
     srcBlob += src->buffer_view->offset + src->offset;
     dst.resize(src->count * numComponents(src->type));
-    // TODO
+    for (size_t i = 0, n = dst.size(); i < n; ++i) {
+        dst[i] = unpackUnorm8(srcBlob[i]);
+    }
 }
 
 static void convert16(const cgltf_accessor* src, const uint8_t* srcBlob, SourceValues& dst) {
     srcBlob += src->buffer_view->offset + src->offset;
     dst.resize(src->count * numComponents(src->type));
-    // TODO    
+    auto srcValues = (const int16_t*) srcBlob;
+    for (size_t i = 0, n = dst.size(); i < n; ++i) {
+        dst[i] = unpackSnorm16(srcValues[i]);
+    }
 }
 
 static void convert16U(const cgltf_accessor* src, const uint8_t* srcBlob, SourceValues& dst) {
     srcBlob += src->buffer_view->offset + src->offset;
     dst.resize(src->count * numComponents(src->type));
-    // TODO
+    auto srcValues = (const uint16_t*) srcBlob;
+    for (size_t i = 0, n = dst.size(); i < n; ++i) {
+        dst[i] = unpackUnorm16(srcValues[i]);
+    }
 }
 
 static void convert32F(const cgltf_accessor* src, const uint8_t* srcBlob, SourceValues& dst) {
@@ -140,11 +152,35 @@ static void createSampler(const cgltf_animation_sampler& src, Sampler& dst, cons
             return;
     }
 
-    dst.interpolation = 0; // TODO
+    switch (src.interpolation) {
+        case cgltf_interpolation_type_linear:
+            dst.interpolation = Sampler::LINEAR;
+            break;
+        case cgltf_interpolation_type_step:
+            dst.interpolation = Sampler::STEP;
+            break;
+        case cgltf_interpolation_type_cubic_spline:
+            dst.interpolation = Sampler::CUBIC;
+            break;
+    }
 }
 
-static void createChannel(const cgltf_animation_channel& src, Channel& dst) {
-    // TODO
+static void setTransformType(const cgltf_animation_channel& src, Channel& dst) {
+    switch (src.target_path) {
+        case cgltf_animation_path_type_translation:
+            dst.transformType = Channel::TRANSLATION;
+            break;
+        case cgltf_animation_path_type_rotation:
+            dst.transformType = Channel::ROTATION;
+            break;
+        case cgltf_animation_path_type_scale:
+            dst.transformType = Channel::SCALE;
+            break;
+        case cgltf_animation_path_type_invalid:
+        case cgltf_animation_path_type_weights:
+            slog.e << "Unsupported channel path." << io::endl;
+            break;
+    }
 }
 
 AnimationHelper::AnimationHelper(FilamentAsset* publicAsset) {
@@ -180,7 +216,9 @@ AnimationHelper::AnimationHelper(FilamentAsset* publicAsset) {
         for (cgltf_size j = 0, nchans = srcAnim.channels_count; j < nchans; ++j) {
             const cgltf_animation_channel& srcChannel = srcChannels[j];
             Channel& dstChannel = dstAnim.channels[j];
-            createChannel(srcChannel, dstChannel);
+            dstChannel.sourceData = &dstAnim.samplers[srcChannel.sampler - srcSamplers];
+            dstChannel.targetInstance = asset->mNodeMap[srcChannel.target_node];
+            setTransformType(srcChannel, dstChannel);
         }
     }
 }
