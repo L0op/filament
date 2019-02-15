@@ -250,7 +250,12 @@ public:
         const T a = std::acos(std::abs(d) / npq);
         const T a0 = a * (1 - t);
         const T a1 = a * t;
-        const T isina = 1 / sin(a);
+        const T sa = sin(a);
+        // Prevent divide-by-zero when slerping equivalent quats.
+        if (sa == 0) {
+            return p;
+        }
+        const T isina = 1 / sa;
         const T s0 = std::sin(a0) * isina;
         const T s1 = std::sin(a1) * isina;
         // ensure we're taking the "short" side

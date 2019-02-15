@@ -26,12 +26,13 @@
 #include <math/mat4.h>
 #include <math/norm.h>
 #include <math/quat.h>
+#include <math/scalar.h>
 #include <math/vec3.h>
 #include <math/vec4.h>
 
 #include <tsl/robin_map.h>
 
-#include <set>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -44,7 +45,7 @@ namespace gltfio {
 
 using namespace details;
 
-using TimeValues = std::set<float>;
+using TimeValues = std::map<float, size_t>;
 using SourceValues = std::vector<float>;
 using UrlMap = tsl::robin_map<std::string, const uint8_t*>;
 
@@ -69,6 +70,7 @@ struct Animation {
 
 struct AnimationImpl {
     std::vector<Animation> animations;
+    TransformManager* transformManager;
 };
 
 static int numComponents(cgltf_type type) {
@@ -121,12 +123,14 @@ static void convert32F(const cgltf_accessor* src, const uint8_t* srcBlob, Source
 }
 
 static void createSampler(const cgltf_animation_sampler& src, Sampler& dst, const UrlMap& blobs) {
-    // Copy the time values into an ordered set.
+    // Copy the time values into a red-black tree.
     const cgltf_accessor* timelineAccessor = src.input;
     const uint8_t* timelineBlob = blobs.at(timelineAccessor->buffer_view->buffer->uri);
     const float* timelineFloats = (const float*) (timelineBlob + timelineAccessor->offset +
             timelineAccessor->buffer_view->offset);
-    dst.times = TimeValues(timelineFloats, timelineFloats + timelineAccessor->count);
+    for (size_t i = 0, len = timelineAccessor->count; i < len; ++i) {
+        dst.times[timelineFloats[i]] = i;
+    }
 
     // Convert source data to float.
     const cgltf_accessor* valuesAccessor = src.output;
@@ -186,6 +190,7 @@ static void setTransformType(const cgltf_animation_channel& src, Channel& dst) {
 AnimationHelper::AnimationHelper(FilamentAsset* publicAsset) {
     mImpl = new AnimationImpl();
     FFilamentAsset* asset = upcast(publicAsset);
+    mImpl->transformManager = &asset->mEngine->getTransformManager();
 
     UrlMap blobs; // TODO: can the key be const char* ?
     const BufferBinding* bindings = asset->getBufferBindings();
@@ -214,7 +219,7 @@ AnimationHelper::AnimationHelper(FilamentAsset* publicAsset) {
             Sampler& dstSampler = dstAnim.samplers[j];
             createSampler(srcSampler, dstSampler, blobs);
             if (dstSampler.times.size() > 1) {
-                float maxtime = *(--dstSampler.times.end());
+                float maxtime = (--dstSampler.times.end())->first;
                 dstAnim.duration = std::max(dstAnim.duration, maxtime);
             }
         }
@@ -253,24 +258,54 @@ void AnimationHelper::applyAnimation(size_t animationIndex, float time) const {
         // Find the first keyframe greater than or equal to the given time.
         // The cool thing about std::set is that it can do this efficiently.
         const TimeValues& times = sampler->times;
-        auto iter = times.lower_bound(time);
+        TimeValues::const_iterator iter = times.lower_bound(time);
 
         // Find the two values that we will interpolate between.
-        float prevTime, nextTime;
-        uint32_t prevIndex, nextIndex; // EYEBALL
+        TimeValues::const_iterator prevIter;
+        TimeValues::const_iterator nextIter;
         if (iter == times.end()) {
-            prevTime = *(--times.end());
-            nextTime = anim.duration + *times.begin();
+            prevIter = --times.end();
+            nextIter = times.begin();
         } else if (iter == times.begin()) {
-            prevTime = nextTime = *iter;
+            prevIter = nextIter = iter;
         } else {
-            nextTime = *iter;
-            prevTime = *(--iter);
+            nextIter = iter;
+            prevIter = --iter;
         }
 
         // Compute the interpolatant value between 0 and 1.
+        float prevTime = prevIter->first;
+        float nextTime = nextIter->first;
         float interval = nextTime - prevTime;
+        if (interval < 0) {
+            interval += anim.duration;
+        }
         float t = interval == 0 ? 0.0f : ((time - prevTime) / interval);
+
+        // Perform the interpolation value between 0 and 1.
+        size_t prevIndex = prevIter->second;
+        size_t nextIndex = nextIter->second;
+        mat4f xform;
+        const float3* srcVec3 = (const float3*) &sampler->values[0];
+        const quatf* srcQuat = (const quatf*) &sampler->values[0];
+        switch (channel.transformType) {
+            case Channel::SCALE: {
+                float3 result = ((1 - t) * srcVec3[prevIndex]) + (t * srcVec3[nextIndex]);
+                xform = mat4f::scale(result);
+                break;
+            }
+            case Channel::TRANSLATION: {
+                float3 result = ((1 - t) * srcVec3[prevIndex]) + (t * srcVec3[nextIndex]);
+                xform = mat4f::translate(result);
+                break;
+            }
+            case Channel::ROTATION: {
+                quatf result = slerp(srcQuat[prevIndex], srcQuat[nextIndex], t);
+                xform = mat4f(result);
+                break;
+            }
+        }
+        mImpl->transformManager->setTransform(channel.targetInstance, xform);
     }
 }
 
